@@ -1,0 +1,242 @@
+Task 1: Debugging with Unit Tests — Reflections
+
+1. Describe the five errors. How did running the tests help or hurt with debugging?
+
+   Bug 1 — subtract(a, b) returned b - a instead of a - b, swapping the operands.
+   Bug 2 — multiply was misspelled as "multiple", so the test suite could not find the method.
+   Bug 3 — is_prime had "if n > 2: return False" instead of "if n < 2: return False",
+            which rejected every prime number greater than 2.
+   Bug 4 — is_even checked n % 2 == 1, which is the test for odd numbers. Fixed to n % 2 == 0.
+   Bug 5 — is_fizzbuzz had two issues: it called is_even(n) without self (which would crash
+            at runtime), and the True/False returns were inverted. The fix was to simplify the
+            method to just "return n % 3 == 0 and n % 5 == 0".
+
+   Running the tests was immediately helpful. pytest's failure output shows the expected vs.
+   actual values for each assertion, which points you directly to the faulty method and narrows
+   down the kind of mistake (swapped operands, wrong comparison, inverted boolean). Without the
+   tests, several of these bugs — especially the is_prime sign flip — would be easy to miss
+   during a manual code review.
+
+2. Which errors were more difficult to detect than others?
+
+   The subtract swap and the is_even check were the easiest to catch because the test output
+   directly shows a flipped sign or wrong boolean. The is_prime bug (> vs <) was slightly
+   subtler because the guard clause looks reasonable at a glance and you have to think about
+   which numbers should be excluded. The misspelled method name ("multiple") is an unusual
+   category of bug that a test catches instantly but could survive a casual code review.
+   The is_fizzbuzz bug was the most difficult because the test suite had no test for that
+   method at all, so it would not have been caught by running the tests. It required a
+   manual code review to identify the missing self reference and the inverted logic.
+
+3. How can calculator.py and test_calculator.py be improved?
+
+   calculator.py:
+   - The __init__ sets self.result = 0 but no method uses it. Either remove it or integrate
+     it as a running accumulator for chained operations.
+   - Add input validation or type hints to arithmetic methods (add, subtract, etc.).
+   - Add docstrings to all methods, not just some.
+
+   test_calculator.py:
+   - There are no tests for is_fizzbuzz. Adding test cases for that method (e.g., 15 -> True,
+     30 -> True, 5 -> False, 3 -> False, 7 -> False) would have caught Bug 5 automatically.
+   - Edge cases like very large numbers, floats, or negative inputs for is_prime and power
+     could be tested more thoroughly.
+   - Tests could be parameterized with @pytest.mark.parametrize to reduce repetition and cover
+     more inputs concisely.
+
+4. General experience with unit testing.
+
+   I have mostly used unit testing in Java for class projects. This workshop was my first
+   hands-on experience using pytest for Python testing.
+
+
+Task 2: Improving Test Coverage — Reflections
+
+1. Which uncovered code paths were most likely to hide real bugs? Why?
+
+   The error-handling branches (ValueError and KeyError raises) were the most likely to hide
+   real bugs. These paths only execute under unusual or invalid inputs, so they rarely get
+   exercised during normal use. If the validation logic is wrong — for example, checking the
+   wrong condition or raising the wrong exception type — the bug stays hidden until a user
+   hits that exact edge case in production. Methods like apply_bonus and get_win_rate also had
+   zero coverage initially, meaning any bug in their core logic (not just error handling) would
+   have gone completely undetected.
+
+2. Branch coverage analysis.
+
+   With --cov-branch, the report showed 90% combined coverage: 55 statements (6 missed),
+   24 branches, and 0 partially covered branches (BrPart = 0). The missing lines (68-72, 76)
+   correspond to get_win_rate and reset, which have no tests at all in this version of the
+   suite. The fact that BrPart is 0 means every branch that was tested was fully covered on
+   both sides (True and False paths).
+
+   Line coverage tells you whether a line was executed at all, but branch coverage checks
+   whether every True/False path through conditionals was taken. For example, the "if total > 0"
+   branch in get_win_rate needs one test where total is 0 (the else path) and one where total
+   is positive (the if path). To improve branch coverage further, I would add tests for
+   get_win_rate (covering both the zero-games and has-games branches) and for reset, which
+   would bring the suite to near 100% on both line and branch coverage.
+
+3. Compare to Task 1: would a coverage report have pointed to the buggy lines?
+
+   Partially. A coverage report would have flagged is_fizzbuzz immediately, since the test
+   suite had no tests for that method at all — 0% coverage on those lines. But for bugs like
+   the subtract operand swap or the is_prime comparison flip, the lines were already covered
+   by tests. Coverage would show 100% on those lines even though they contained bugs. This
+   highlights the key limitation: coverage measures whether code was executed, not whether it
+   was executed correctly. You still need well-designed assertions to catch logical errors.
+
+4. How can test coverage and unit testing affect your future development practices?
+
+   Coverage reports provide a useful safety net for identifying blind spots — entire methods
+   or error branches that no test touches. Making coverage part of a CI pipeline (e.g.,
+   requiring 80%+ before merging) creates a minimum quality bar. But coverage alone is not
+   enough. The Task 1 experience showed that covered lines can still contain bugs. The real
+   value comes from combining coverage metrics with thoughtful test design: boundary values,
+   equivalence classes, and assertions that verify correct behavior rather than just exercising
+   code paths.
+
+
+Task 3: AI-Generated Tests — Reflections
+
+1. What prompt did you use? How could it be improved? What challenges did you face?
+
+   Prompt used: "Generate pytest unit tests for this Python code. Test the Question class,
+   save_quiz, load_quiz, and run_quiz functions. Include edge cases." The full source code
+   was included in the prompt so the model could see the implementation.
+
+   The prompt could be improved by specifying pytest fixtures (tmp_path for file I/O,
+   monkeypatch for mocking input/print), requesting that no placeholder imports be used,
+   and explicitly asking the model to avoid assumptions about how functions exit (e.g., do
+   not assume SystemExit). The main challenge was balancing prompt specificity with length.
+   A vague prompt like "generate tests" produces generic output, but a highly detailed
+   prompt risks overwhelming a 7B model with too many constraints.
+
+2. Evaluate the AI-generated tests. What did the model do well? What did it struggle with?
+
+   What it did well:
+   - Correctly tested Question.to_dict and Question.from_dict with sensible assertions.
+   - The save/load round-trip test had the right structure: create questions, save, load,
+     compare. It even included cleanup with os.remove.
+   - The test names were descriptive and followed pytest conventions.
+
+   What it struggled with:
+   - Used a placeholder import ("from your_module import ...") instead of the actual module.
+   - Forgot to import os, so test_save_load_quiz would crash on the cleanup line.
+   - The run_quiz tests were fundamentally wrong: they assumed run_quiz raises SystemExit,
+     but the function simply prints results and returns. These tests would either hang
+     (waiting for input) or fail immediately.
+   - Did not use monkeypatch or unittest.mock to handle the input() calls in run_quiz,
+     which is essential for testing interactive CLI functions.
+   - Claimed to include edge cases (empty quiz, missing file) in the explanation but did
+     not actually implement them in the test code.
+
+   Would I accept these as-is for production? No. The Question class tests are usable, but
+   the run_quiz tests are broken and would need to be completely rewritten with proper input
+   mocking. The save/load test needs an import fix and should use tmp_path instead of writing
+   to the working directory. Roughly half the generated tests would fail or hang.
+
+3. Did the AI-generated tests pass or fail?
+
+   Without modification the tests would not run at all due to the placeholder import. After
+   fixing the import, the Question class tests and the save/load test (with the missing os
+   import added) would likely pass. The three run_quiz tests would either hang indefinitely
+   (waiting for input) or fail because run_quiz does not raise SystemExit. Overall, maybe
+   2-3 out of 6 tests would pass after minimal fixes, giving limited but nonzero coverage
+   focused on the Question class and file I/O.
+
+4. Experiences with AI tools for testing.
+
+   I rarely use AI tools for testing directly. I mostly use AI tools to quickly understand
+   what code is doing for readability and simplification purposes rather than generating
+   explicit test cases. I do sometimes ask AI if I am missing any test cases as a sanity
+   check, but the actual test writing is done manually.
+
+   [Add classmates' discussion responses here if applicable.]
+
+
+Task 4: Agentic Software Testing — Reflections
+
+Note: The Claude Code agent was successfully installed and launched with the local
+Qwen2.5-Coder 7B model via Ollama. The /test command ran for 20 minutes and the /verify
+command ran for 51 minutes, but neither produced output due to the model running on CPU
+in a Docker container. No test file was generated, so Step 5 review could not be completed.
+This is consistent with the workshop's warning about potential delays, timeouts, and crashes.
+
+1. How did the agentic approach compare to the prompt-based approach in Task 3?
+
+   Process differences:
+   The agentic approach is fundamentally different from raw prompting. In Task 3, I had to
+   manually craft a prompt, include the full source code, call the Ollama API, and then
+   manually evaluate the output. The agent approach (Task 4) automates this entire pipeline:
+   Claude Code reads the skill definitions, adopts the QA Engineer persona, analyzes the
+   codebase, generates tests, runs them, checks coverage, and iterates until quality gates
+   pass. The agent has access to the filesystem and can execute commands, which the raw
+   prompt approach cannot do.
+
+   Expected output quality:
+   The agentic approach should produce better tests because the skill file explicitly
+   instructs the agent to use monkeypatch for input mocking, tmp_path for file I/O, and
+   capsys for output capture — all things the Task 3 prompt-only approach missed entirely.
+   The agent can also self-correct: if tests fail, it can read the error output and fix them.
+   Task 3's model had no ability to run or validate its own output.
+
+   Practical limitations:
+   The main downside is infrastructure complexity. Running a 7B parameter model on CPU in a
+   Docker container through a browser IDE is extremely slow. The agentic loop requires
+   multiple round-trips to the model (read code, generate tests, run tests, analyze failures,
+   fix, re-run), and each round-trip takes minutes on CPU. A GPU-backed environment or a
+   cloud-hosted model like Claude would make this practical.
+
+2. What criteria did you set for the test and verify skills? Why?
+
+   Test skill (NEVER/ALWAYS lists):
+   - NEVER: block on stdin without mocking, use placeholder imports, skip edge cases, write
+     filesystem-polluting tests, use vague assertions, depend on test execution order.
+   - ALWAYS: use monkeypatch for input(), capsys for print(), tmp_path for files, follow
+     the test_<method>_<scenario> naming pattern, test all acceptance criteria (AC-1 through
+     AC-14), achieve 100% branch coverage of scoring logic.
+
+   These criteria were chosen because Task 3 revealed exactly what goes wrong without them:
+   the model generated tests that blocked on input, used wrong imports, and skipped I/O
+   mocking entirely.
+
+   Verify skill (four quality gates):
+   - Gate 1 (Test Integrity): All tests pass, 70%+ coverage, every public function tested.
+   - Gate 2 (Health Check): Error handling for file I/O, no bare excepts, no crashes on
+     bad input.
+   - Gate 3 (Deployment Readiness): No hardcoded paths, dependencies listed, README accurate,
+     acceptance criteria traceable to tests.
+   - Gate 4 (Maintainability): flake8 clean, PEP 8 style, docstrings present, no duplicate
+     test logic.
+
+   The 70% coverage threshold was chosen as a realistic minimum for a small CLI app. The
+   gates progress from correctness (does it work?) to quality (is it maintainable?), which
+   mirrors a real CI/CD pipeline.
+
+3. If you had more time, what other checks would you include?
+
+   - Integration tests that exercise the full create-save-load-take workflow end to end.
+   - Mutation testing (similar to SemanticFuzz) to verify that tests actually detect faults,
+     not just execute code paths.
+   - Security checks: validate that quiz filenames are sanitized to prevent path traversal.
+   - A feedback loop where the agent compares its generated tests against the acceptance
+     criteria checklist and flags any AC without a corresponding test.
+   - Performance profiling to ensure the agent loop completes in a reasonable time budget.
+
+4. Perceptions on the future of testing and maintenance in the age of AI.
+
+   AI-generated testing is promising but not yet reliable enough to replace human judgment.
+   Task 3 showed that a 7B model produces tests with fundamental errors (wrong assumptions
+   about function behavior, missing I/O mocking). The agentic approach in Task 4 addresses
+   some of these issues by giving the AI access to tools (filesystem, test runner, coverage
+   reports) and structured instructions (skills, personas, acceptance criteria).
+
+   The direction the industry is heading with tools like Claude Code, Copilot, and Cursor
+   is toward AI-generated testing. However, in my opinion it is better to use AI for
+   understanding and readability of code rather than writing explicit tests. AI is great at
+   explaining what code does, identifying potential gaps, and helping developers reason about
+   edge cases. But the actual test writing benefits from human judgment about what matters
+   and what the expected behavior should be. AI-generated tests often look correct on the
+   surface but miss the intent behind the code, as we saw in Task 3 where the model assumed
+   SystemExit behavior that did not exist in the program.
